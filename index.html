@@ -2,43 +2,64 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Vérificateur de Solde Transférable</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Vesting Base</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f0f2f5; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f0f2f5; color: #333; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { margin-top: 0; color: #333; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        button { background: #0052ff; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; }
+        h1 { margin-top: 0; font-size: 1.5rem; text-align: center; margin-bottom: 20px;}
+        .input-group { margin-bottom: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9rem; }
+        input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-family: monospace; font-size: 1rem; }
+        button { background: #0052ff; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; transition: background 0.2s; }
         button:hover { background: #0040c9; }
-        .result { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none; }
-        .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
-        .highlight { color: #0052ff; font-weight: bold; font-size: 1.2em; border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
-        .error { color: red; margin-top: 10px; display: none; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .result-box { margin-top: 25px; border-top: 1px solid #eee; padding-top: 20px; display: none; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
+        .highlight { background: #e6f0ff; color: #0052ff; padding: 15px; border-radius: 8px; font-weight: bold; font-size: 1.1em; margin-top: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .error { color: #d93025; background: #fce8e6; padding: 10px; border-radius: 6px; margin-top: 15px; display: none; text-align: center; }
+        .loading { text-align: center; color: #666; font-style: italic; margin-top: 10px; display: none; }
+        
+        footer { text-align: center; margin-top: 30px; font-size: 0.8rem; color: #888; }
+        a { color: #0052ff; text-decoration: none; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🔓 Mon Solde Transférable</h2>
-    <p>Entrez votre adresse pour voir ce qui est débloqué.</p>
+    <h1>🔍 Vesting Checker (Base)</h1>
     
-    <input type="text" id="addressInput" placeholder="0x..." value="">
-    <button onclick="checkBalance()">Vérifier le solde</button>
+    <div class="input-group">
+        <label for="addressInput">Adresse du Wallet :</label>
+        <input type="text" id="addressInput" placeholder="0x..." spellcheck="false">
+    </div>
+
+    <button id="checkBtn" onclick="checkBalance()">Vérifier le solde</button>
     
+    <div id="loading" class="loading">Lecture de la blockchain...</div>
     <div id="error" class="error"></div>
 
-    <div id="result" class="result">
-        <div class="row"><span>Solde Total (Wallet):</span> <strong id="total">---</strong></div>
-        <div class="row"><span>Encore Bloqué (Vesting):</span> <strong id="locked">---</strong></div>
-        <div class="row highlight"><span>✅ DISPONIBLE :</span> <span id="available">---</span></div>
+    <div id="result" class="result-box">
+        <div class="row"><span>Solde Total (Wallet) :</span> <strong id="total">---</strong></div>
+        <div class="row"><span>🔒 Encore Bloqué :</span> <strong id="locked">---</strong></div>
+        <div class="highlight">
+            <span>✅ DISPONIBLE :</span> 
+            <span id="available">---</span>
+        </div>
     </div>
 </div>
 
-<!-- Import de la librairie Ethers.js directement depuis le web -->
+<footer>
+    Données en direct de la blockchain Base.<br>
+    Token Contract: <a href="https://basescan.org/address/0xb372dc09d8d84e1246760ee9d279e504a89f5684" target="_blank">0xb372...5684</a>
+</footer>
+
+<!-- Script Module -->
 <script type="module">
     import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js";
 
-    // Configuration
+    // --- CONFIGURATION ---
     const RPC_URL = "https://mainnet.base.org";
     const TOKEN_ADDRESS = "0xb372dc09d8d84e1246760ee9d279e504a89f5684";
     const ABI = [
@@ -47,44 +68,75 @@
         "function getVestingTokenAmount(address userAddress) view returns (uint256)"
     ];
 
+    // Fonction principale attachée à la fenêtre pour être accessible par le bouton HTML
     window.checkBalance = async function() {
-        const address = document.getElementById('addressInput').value;
+        const addressInput = document.getElementById('addressInput');
         const resultDiv = document.getElementById('result');
         const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+        const btn = document.getElementById('checkBtn');
+
+        const address = addressInput.value.trim();
+        
+        // Reset de l'interface
+        errorDiv.style.display = 'none';
+        resultDiv.style.display = 'none';
         
         if(!ethers.isAddress(address)) {
-            errorDiv.innerText = "Adresse invalide";
+            errorDiv.innerText = "❌ Adresse invalide. Vérifiez le format (0x...).";
             errorDiv.style.display = 'block';
             return;
         }
 
-        errorDiv.style.display = 'none';
-        resultDiv.style.opacity = '0.5';
+        // UI Loading state
+        loadingDiv.style.display = 'block';
+        btn.disabled = true;
 
         try {
             const provider = new ethers.JsonRpcProvider(RPC_URL);
             const contract = new ethers.Contract(TOKEN_ADDRESS, ABI, provider);
 
-            // Appels parallèles pour aller plus vite
+            // Appels parallèles (Balance + Vesting + Décimales)
             const [total, locked, decimals] = await Promise.all([
                 contract.balanceOf(address),
                 contract.getVestingTokenAmount(address),
                 contract.decimals()
             ]);
 
+            // Calcul : Total - Bloqué = Disponible
             const available = total - locked;
 
-            document.getElementById('total').innerText = parseFloat(ethers.formatUnits(total, decimals)).toFixed(2);
-            document.getElementById('locked').innerText = parseFloat(ethers.formatUnits(locked, decimals)).toFixed(2);
-            document.getElementById('available').innerText = parseFloat(ethers.formatUnits(available, decimals)).toFixed(4) + " Tokens";
+            // Formatage
+            document.getElementById('total').innerText = formatNumber(ethers.formatUnits(total, decimals));
+            document.getElementById('locked').innerText = formatNumber(ethers.formatUnits(locked, decimals));
+            document.getElementById('available').innerText = formatNumber(ethers.formatUnits(available, decimals)) + " Tokens";
 
             resultDiv.style.display = 'block';
-            resultDiv.style.opacity = '1';
 
         } catch (err) {
             console.error(err);
-            errorDiv.innerText = "Erreur de connexion à la blockchain.";
+            errorDiv.innerText = "⚠️ Erreur de connexion RPC. Réessayez.";
             errorDiv.style.display = 'block';
+        } finally {
+            loadingDiv.style.display = 'none';
+            btn.disabled = false;
+        }
+    }
+
+    // Petit utilitaire pour mettre des virgules (ex: 1,000.50)
+    function formatNumber(numStr) {
+        return parseFloat(numStr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    }
+
+    // --- AUTO-RUN SI URL CONTIENT ?addr= ---
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const addrParam = urlParams.get('addr');
+
+        if (addrParam) {
+            document.getElementById('addressInput').value = addrParam;
+            // On lance la vérification automatiquement
+            checkBalance();
         }
     }
 </script>
